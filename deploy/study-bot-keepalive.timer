@@ -1,0 +1,12 @@
+[Unit]
+Description=Study Bot keepalive 주기 실행 (Oracle Free Tier idle 방지)
+
+[Timer]
+# 부팅 5분 뒤 최초 1회, 이후 15분마다 실행.
+# 15분마다 120초 부하 → 약 13% 듀티. CPU 95백분위가 20%를 넘어 idle 판정을 피한다.
+OnBootSec=5min
+OnUnitActiveSec=15min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

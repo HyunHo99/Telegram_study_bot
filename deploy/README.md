@@ -109,6 +109,67 @@ journalctl -u study-bot -f               # 실시간 로그 (Ctrl+C 로 나가�
 
 ---
 
+## 6단계. ⚠️ 무료 VM 회수(idle reclamation) 방지 — 중요
+
+Oracle "Always Free" 인스턴스는 **놀고 있으면 회수될 수 있습니다.** 최근 **7일간**
+아래 지표가 **모두** 낮으면(95 백분위 기준) idle 로 판정합니다:
+
+- CPU 사용률 < 20%
+- 네트워크 사용률 < 20%
+- 메모리 사용률 < 20% (A1 Flex 셰이프만 해당)
+
+우리 봇은 long-polling 만 하므로 세 지표가 거의 0 → **그냥 두면 회수 위험**이 있습니다.
+아래 둘 중 하나(가능하면 둘 다)를 적용하세요.
+
+### 방법 A. Pay As You Go 로 업그레이드 (가장 확실, 권장)
+
+**PAYG(종량제) 계정의 인스턴스는 idle 회수 대상에서 제외됩니다.**
+결제수단만 등록할 뿐, **Always Free 한도 안에서 쓰면 요금은 계속 $0** 입니다.
+
+1. OCI 콘솔 우측 상단 프로필 → **Upgrade to Paid** (또는 Billing → Upgrade).
+2. 결제수단 등록. 리소스는 그대로 Always Free 로 유지됨.
+3. **예상치 못한 과금 방지**를 위해 예산 알림을 걸어 두세요:
+   **Billing → Budgets → Create Budget** 에서 월 예산(예: 1)과 알림 임계값(예: 80%) 설정.
+4. Always Free 대상 셰이프(A1 1~4 OCPU/24GB 이내, E2.1.Micro 등)를 벗어나지 않으면
+   과금되지 않습니다.
+
+> 💡 "무료인데 카드 등록?" 이 꺼려질 수 있지만, 회수 없이 안정적으로 24시간 돌리는
+> 가장 확실한 방법입니다. 예산 알림까지 걸면 실수로 과금될 일도 사실상 없습니다.
+
+### 방법 B. keepalive 타이머 (Free Tier 유지 시)
+
+계정을 Free Tier 로 두겠다면, 주기적으로 CPU 를 살짝 태워 idle 판정을 피합니다.
+저장소에 포함된 타이머를 등록하세요 (별도 패키지 불필요):
+
+```bash
+cd ~/Telegram_study_bot
+chmod +x deploy/keepalive.sh
+
+sudo cp deploy/study-bot-keepalive.service /etc/systemd/system/
+sudo cp deploy/study-bot-keepalive.timer   /etc/systemd/system/
+# (Oracle Linux 이미지면 두 파일의 User=ubuntu / 경로를 opc 로 수정)
+
+sudo systemctl daemon-reload
+sudo systemctl enable --now study-bot-keepalive.timer
+```
+
+동작 확인:
+
+```bash
+systemctl list-timers study-bot-keepalive.timer   # 다음 실행 시각 확인
+sudo systemctl start study-bot-keepalive.service   # 지금 1회 강제 실행 테스트
+journalctl -u study-bot-keepalive -n 20            # 로그 확인
+```
+
+기본값은 **15분마다 120초 부하**(약 13% 듀티)로, CPU 95 백분위를 20% 이상으로
+유지합니다. 세기를 바꾸려면 `study-bot-keepalive.service` 의 `KEEPALIVE_SECONDS` /
+`KEEPALIVE_WORKERS` 값을 수정하고 `sudo systemctl daemon-reload` 하세요.
+
+> ⚠️ keepalive 는 CPU 통계상 idle 을 면하게 해줄 뿐이며, Oracle 정책 변경 시
+> 100% 보장되지는 않습니다. 확실히 하려면 **방법 A(PAYG)** 를 권장합니다.
+
+---
+
 ## 코드 업데이트 방법
 
 봇 코드를 수정/업데이트한 뒤:

@@ -1,0 +1,14 @@
+[Unit]
+Description=Study Bot keepalive (Oracle Free Tier idle reclamation 방지)
+
+[Service]
+Type=oneshot
+# Ubuntu 이미지는 기본 사용자가 'ubuntu', Oracle Linux 이미지는 'opc' 입니다.
+User=ubuntu
+# 낮은 우선순위로 실행하여 봇/시스템에 영향을 최소화 (CPU 통계에는 그대로 잡힘).
+Nice=19
+IOSchedulingClass=idle
+# 1회 부하 지속 시간(초) / 동시 프로세스 수. 필요 시 조정.
+Environment=KEEPALIVE_SECONDS=120
+Environment=KEEPALIVE_WORKERS=1
+ExecStart=/home/ubuntu/Telegram_study_bot/deploy/keepalive.sh
