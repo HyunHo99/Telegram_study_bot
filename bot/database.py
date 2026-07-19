@@ -111,6 +111,24 @@ def set_level(chat_id: int, user_id: int, level: int, display_name: str = "") ->
     upsert_user(chat_id, user_id, display_name, level)
 
 
+def delete_user(chat_id: int, user_id: int, purge_submissions: bool = False) -> bool:
+    """멤버를 삭제한다. 삭제된 행이 있으면 True.
+
+    purge_submissions=True 면 해당 멤버의 제출 기록도 함께 삭제한다(기본은 유지).
+    """
+    conn = _connect()
+    cur = conn.execute(
+        "DELETE FROM users WHERE chat_id = ? AND user_id = ?", (chat_id, user_id)
+    )
+    if purge_submissions:
+        conn.execute(
+            "DELETE FROM submissions WHERE chat_id = ? AND user_id = ?",
+            (chat_id, user_id),
+        )
+    conn.commit()
+    return cur.rowcount > 0
+
+
 def get_user(chat_id: int, user_id: int) -> Optional[sqlite3.Row]:
     conn = _connect()
     cur = conn.execute(

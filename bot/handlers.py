@@ -36,6 +36,7 @@ HELP_TEXT = (
     "▪ 관리자 명령\n"
     "• /setlevel <레벨> — (대상 메시지에 답장하여) 해당 멤버 레벨 설정\n"
     "• /setlevel <user_id> <레벨> — user_id 로 레벨 설정\n"
+    "• /remove — (대상 메시지에 답장 또는 user_id) 멤버 삭제\n"
     "• /topic <내용> — 이번 주 위클리 과제 방향 공지/설정\n"
     "• /fine — 지난 주 벌금 지금 집계·공지\n"
     "• /fine_preview — 이번 주 현재까지 기준 벌금 미리보기\n"
@@ -139,6 +140,50 @@ async def cmd_setlevel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     rule = config.get_rule(level)
     await msg.reply_text(
         f"✅ {target_name or target_id} 님 레벨을 *{rule.label}* 로 설정했습니다.\n{_rule_line(rule)}",
+        parse_mode=ParseMode.MARKDOWN,
+    )
+
+
+async def cmd_remove(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """멤버를 삭제한다 (관리자). 대상 메시지에 답장하거나 user_id 로 지정."""
+    if not await is_admin(update, context):
+        await update.effective_message.reply_text("⛔ 관리자만 사용할 수 있는 명령입니다.")
+        return
+
+    chat = update.effective_chat
+    msg = update.effective_message
+    reply = msg.reply_to_message
+
+    target_id: int | None = None
+    target_name = ""
+    if reply is not None and reply.from_user is not None:
+        target_id = reply.from_user.id
+        target_name = display_name(reply.from_user)
+    elif context.args:
+        try:
+            target_id = int(context.args[0])
+        except ValueError:
+            target_id = None
+
+    if target_id is None:
+        await msg.reply_text(
+            "사용법:\n"
+            "• 대상 메시지에 답장 후 `/remove`\n"
+            "• 또는 `/remove <user_id>`",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+        return
+
+    existing = database.get_user(chat.id, target_id)
+    if existing is None:
+        await msg.reply_text("해당 멤버는 등록되어 있지 않습니다.")
+        return
+
+    name = target_name or existing["display_name"]
+    database.delete_user(chat.id, target_id)
+    await msg.reply_text(
+        f"🗑 *{name}* 님을 멤버에서 삭제했습니다.\n"
+        f"(제출 기록은 보관됩니다. 다시 참여하려면 `/register` 하면 됩니다.)",
         parse_mode=ParseMode.MARKDOWN,
     )
 

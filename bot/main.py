@@ -80,6 +80,7 @@ def build_application() -> Application:
 
     app.add_handler(CommandHandler("register", handlers.cmd_register))
     app.add_handler(CommandHandler("setlevel", handlers.cmd_setlevel))
+    app.add_handler(CommandHandler("remove", handlers.cmd_remove))
     app.add_handler(CommandHandler("mylevel", handlers.cmd_mylevel))
     app.add_handler(CommandHandler("members", handlers.cmd_members))
     app.add_handler(CommandHandler("rules", handlers.cmd_rules))
