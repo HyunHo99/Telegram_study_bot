@@ -263,6 +263,16 @@ async def _process_submission(chat, user, reply_msg, context: ContextTypes.DEFAU
         database.upsert_user(chat.id, user.id, display_name(user))
 
     d = today()
+
+    # 데일리는 하루 1회만 제출 가능.
+    if kind == "daily" and database.count_submissions_on_date(
+        chat.id, user.id, "daily", d.isoformat()
+    ) > 0:
+        await reply_msg.reply_text(
+            "⚠️ 오늘은 이미 데일리 과제를 제출했어요. 데일리는 하루 1회만 제출할 수 있습니다."
+        )
+        return
+
     year, week = weeks.iso_of(d)
     sub_id = database.add_submission(chat.id, user.id, kind, content, year, week)
 
@@ -277,9 +287,6 @@ async def _process_submission(chat, user, reply_msg, context: ContextTypes.DEFAU
 
     rule = config.get_rule(level)
     char_count = len(content)
-    short_note = ""
-    if char_count < config.RECOMMENDED_MIN_CHARS:
-        short_note = f" (권장 {config.RECOMMENDED_MIN_CHARS}자 미만)"
 
     if kind == "daily":
         done = database.count_submissions(chat.id, user.id, "daily", year, week)
@@ -289,7 +296,7 @@ async def _process_submission(chat, user, reply_msg, context: ContextTypes.DEFAU
         progress = f"이번 주 위클리 {done}회 제출"
 
     reply = (
-        f"✅ {kind_label} 과제 제출 완료! ({char_count}자{short_note})\n"
+        f"✅ {kind_label} 과제 제출 완료! ({char_count}자)\n"
         f"📊 {progress}"
     )
     if notion_url:

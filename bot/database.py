@@ -167,6 +167,18 @@ def count_submissions(chat_id: int, user_id: int, kind: str,
     return cur.fetchone()["c"]
 
 
+def count_submissions_on_date(chat_id: int, user_id: int, kind: str,
+                              date_iso: str) -> int:
+    """특정 날짜(YYYY-MM-DD)에 해당 종류의 제출 수. created_at 앞 10자 기준."""
+    conn = _connect()
+    cur = conn.execute(
+        "SELECT COUNT(*) AS c FROM submissions"
+        " WHERE chat_id = ? AND user_id = ? AND kind = ? AND substr(created_at, 1, 10) = ?",
+        (chat_id, user_id, kind, date_iso),
+    )
+    return cur.fetchone()["c"]
+
+
 def count_submissions_in_weeks(chat_id: int, user_id: int, kind: str,
                                weeks: list[tuple[int, int]]) -> int:
     """여러 (iso_year, iso_week) 주에 걸친 제출 수 합계 (위클리 주기 계산용)."""
