@@ -11,6 +11,25 @@ from datetime import date
 
 from . import config, database, weeks
 
+# 그룹(chat)별 "스터디 시작 주"(week ordinal) 저장 키.
+_START_SETTING_KEY = "program_start_ordinal"
+
+
+def get_program_start_ordinal(chat_id: int) -> int:
+    """해당 그룹의 스터디 시작 주 순번. 미설정 시 config 기본값."""
+    raw = database.get_setting(chat_id, _START_SETTING_KEY, "")
+    if raw:
+        try:
+            return int(raw)
+        except ValueError:
+            pass
+    return weeks.week_ordinal(config.PROGRAM_START_DATE)
+
+
+def set_program_start(chat_id: int, d) -> None:
+    """d 가 속한 주를 그룹의 스터디 시작 주로 저장한다."""
+    database.set_setting(chat_id, _START_SETTING_KEY, str(weeks.week_ordinal(d)))
+
 
 @dataclass
 class UserFine:
@@ -56,6 +75,16 @@ def compute_user_fine(chat_id: int, user_id: int, display_name: str, level: int,
                       target_ordinal: int) -> UserFine:
     rule = config.get_rule(level)
     target_year, target_week = weeks.ordinal_to_iso(target_ordinal)
+    anchor_ordinal = get_program_start_ordinal(chat_id)
+
+    # 스터디 시작 주 이전은 집계하지 않는다 (전부 0원).
+    if target_ordinal < anchor_ordinal:
+        return UserFine(
+            user_id=user_id, display_name=display_name, level=level,
+            daily_done=0, daily_required=rule.daily_required, daily_missed=0,
+            weekly_done=0, weekly_required=rule.weekly_required, weekly_missed=0,
+            weekly_assessed=False, daily_fine=0, weekly_fine=0,
+        )
 
     # 데일리: 대상 주 한 주 기준.
     daily_done = database.count_submissions(
@@ -72,10 +101,12 @@ def compute_user_fine(chat_id: int, user_id: int, display_name: str, level: int,
     weekly_assessed = False
 
     if rule.weekly_period_weeks > 0 and weeks.is_period_due(
-        target_ordinal, rule.weekly_period_weeks
+        target_ordinal, rule.weekly_period_weeks, anchor_ordinal
     ):
         weekly_assessed = True
-        period = weeks.period_weeks(target_ordinal, rule.weekly_period_weeks)
+        period = weeks.period_weeks(
+            target_ordinal, rule.weekly_period_weeks, anchor_ordinal
+        )
         weekly_done = database.count_submissions_in_weeks(
             chat_id, user_id, "weekly", period
         )

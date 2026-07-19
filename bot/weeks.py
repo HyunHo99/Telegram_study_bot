@@ -50,22 +50,27 @@ def week_range_label(d: date) -> str:
     return f"{monday.isoformat()} ~ {sunday.isoformat()} ({year}-W{week:02d})"
 
 
-def period_weeks(target_ordinal: int, period: int) -> list[tuple[int, int]]:
+def period_weeks(target_ordinal: int, period: int,
+                 anchor_ordinal: int = 0) -> list[tuple[int, int]]:
     """target 주가 속한 주기(period주)에 포함된 모든 (iso_year, iso_week).
 
+    anchor_ordinal 주를 주기 경계의 기준점으로 삼는다(그 주가 주기의 첫 주).
     period<=1 이면 target 주 하나만 반환한다.
     """
     if period <= 1:
         return [ordinal_to_iso(target_ordinal)]
-    start = (target_ordinal // period) * period
+    rel = target_ordinal - anchor_ordinal
+    start = anchor_ordinal + (rel // period) * period
     return [ordinal_to_iso(start + i) for i in range(period)]
 
 
-def is_period_due(target_ordinal: int, period: int) -> bool:
+def is_period_due(target_ordinal: int, period: int,
+                  anchor_ordinal: int = 0) -> bool:
     """target 주가 해당 주기의 마지막 주(정산 주)인지 여부.
 
+    anchor_ordinal 주를 주기 경계의 기준점으로 삼는다.
     period<=1 이면 항상 정산 대상.
     """
     if period <= 1:
         return True
-    return target_ordinal % period == period - 1
+    return (target_ordinal - anchor_ordinal) % period == period - 1

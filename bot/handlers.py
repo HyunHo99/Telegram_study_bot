@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import timedelta
 
 from telegram import ForceReply, Update
 from telegram.constants import ParseMode
@@ -37,7 +38,8 @@ HELP_TEXT = (
     "• /setlevel <user_id> <레벨> — user_id 로 레벨 설정\n"
     "• /topic <내용> — 이번 주 위클리 과제 방향 공지/설정\n"
     "• /fine — 지난 주 벌금 지금 집계·공지\n"
-    "• /fine_preview — 이번 주 현재까지 기준 벌금 미리보기\n\n"
+    "• /fine_preview — 이번 주 현재까지 기준 벌금 미리보기\n"
+    "• /reset — 집계 기준을 이번 주부터로 리셋 (제출 기록은 유지)\n\n"
     "💡 /menu 를 입력하면 버튼으로 편하게 쓸 수 있어요."
 )
 
@@ -75,14 +77,20 @@ def _register_user(chat_id: int, user, level: int | None) -> str:
 async def cmd_register(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user = update.effective_user
     chat = update.effective_chat
-    level = None
-    if context.args:
-        level = parse_level(" ".join(context.args))
-        if level is None:
-            await update.effective_message.reply_text(
-                f"레벨은 {', '.join(map(str, config.VALID_LEVELS))} 중 하나여야 합니다."
-            )
-            return
+
+    # 레벨을 지정하지 않으면 버튼으로 물어본다.
+    if not context.args:
+        await update.effective_message.reply_text(
+            "등록할 레벨을 선택하세요:", reply_markup=keyboards.level_menu()
+        )
+        return
+
+    level = parse_level(" ".join(context.args))
+    if level is None:
+        await update.effective_message.reply_text(
+            f"레벨은 {', '.join(map(str, config.VALID_LEVELS))} 중 하나여야 합니다."
+        )
+        return
 
     await update.effective_message.reply_text(
         _register_user(chat.id, user, level), parse_mode=ParseMode.MARKDOWN
@@ -450,7 +458,13 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     else:
         lines.append("— 위클리 과제 없음")
 
-    if fine.has_fine:
+    start_ordinal = fines.get_program_start_ordinal(chat.id)
+    if ordinal < start_ordinal:
+        start_monday = weeks.monday_of(d) + timedelta(weeks=start_ordinal - ordinal)
+        lines.append("")
+        lines.append(f"🗓 벌금 집계는 *{start_monday.isoformat()}* 주부터 시작돼요. "
+                     "이번 주는 집계 대상이 아닙니다.")
+    elif fine.has_fine:
         lines.append("")
         lines.append(f"💸 현재 기준 예상 벌금: *{fine.total_fine:,}원*")
         lines.append("아직 이번 주가 끝나지 않았으니 만회 가능합니다! 💪")
@@ -478,7 +492,6 @@ async def cmd_fine(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not await is_admin(update, context):
         await update.effective_message.reply_text("⛔ 관리자만 사용할 수 있는 명령입니다.")
         return
-    from datetime import timedelta
 
     chat = update.effective_chat
     target = today() - timedelta(days=today().weekday() + 1)  # 지난 주 일요일
@@ -487,4 +500,24 @@ async def cmd_fine(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         fines.format_report(report),
         parse_mode=ParseMode.MARKDOWN,
         disable_web_page_preview=True,
+    )
+
+
+async def cmd_reset(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """스터디 집계 기준을 이번 주로 리셋한다 (관리자). 제출 기록은 유지."""
+    if not await is_admin(update, context):
+        await update.effective_message.reply_text("⛔ 관리자만 사용할 수 있는 명령입니다.")
+        return
+
+    chat = update.effective_chat
+    d = today()
+    fines.set_program_start(chat.id, d)
+    monday = weeks.monday_of(d)
+    await update.effective_message.reply_text(
+        f"🔄 *스터디 집계를 이번 주부터 다시 시작합니다.*\n\n"
+        f"• 기준 주: *{monday.isoformat()}* 주 (이번 주)\n"
+        f"• 이 주부터 데일리/위클리 벌금이 집계됩니다.\n"
+        f"• 위클리 2주 주기도 이 주를 1주차로 다시 계산합니다.\n"
+        f"• 기존 제출 기록은 그대로 유지됩니다.",
+        parse_mode=ParseMode.MARKDOWN,
     )

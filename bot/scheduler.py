@@ -13,7 +13,7 @@ from datetime import datetime, timedelta
 from telegram.constants import ParseMode
 from telegram.ext import Application, ContextTypes
 
-from . import config, database, fines
+from . import config, database, fines, weeks
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +43,7 @@ async def weekly_fine_job(context: ContextTypes.DEFAULT_TYPE) -> None:
     now = datetime.now(config.TZ)
     # 월요일에 실행 → 지난 주 일요일을 대상 주간으로 삼는다.
     target_date = now.date() - timedelta(days=now.weekday() + 1)
+    target_ordinal = weeks.week_ordinal(target_date)
 
     chat_ids = _target_chat_ids()
     if not chat_ids:
@@ -51,6 +52,11 @@ async def weekly_fine_job(context: ContextTypes.DEFAULT_TYPE) -> None:
 
     for chat_id in chat_ids:
         try:
+            # 그룹의 스터디 시작 주 이전이면 집계·공지하지 않는다.
+            if target_ordinal < fines.get_program_start_ordinal(chat_id):
+                logger.info("스터디 시작 이전 주간 → 집계 건너뜀 (chat=%s, 대상 %s)",
+                            chat_id, target_date)
+                continue
             report = fines.compute_weekly_report(chat_id, target_date)
             text = fines.format_report(report)
             await context.bot.send_message(

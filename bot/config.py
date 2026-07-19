@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from datetime import date
 from zoneinfo import ZoneInfo
 
 from dotenv import load_dotenv
@@ -16,6 +17,16 @@ def _get_bool(name: str, default: bool) -> bool:
     if raw is None:
         return default
     return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _get_date(name: str, default: date) -> date:
+    raw = os.getenv(name, "").strip()
+    if not raw:
+        return default
+    try:
+        return date.fromisoformat(raw)
+    except ValueError:
+        return default
 
 
 def _get_int_list(name: str) -> set[int]:
@@ -50,6 +61,10 @@ DB_PATH = os.getenv("DB_PATH", "data/study_bot.db")
 FINE_WEEKDAY = 0  # Monday (Python: Monday=0)
 FINE_HOUR = 8
 FINE_MINUTE = 0
+
+# 스터디 시작 주. 이 날이 속한 주(월~일)부터 벌금 집계와 위클리 주기 계산을 시작한다.
+# 이전 주는 벌금 집계·공지에서 제외된다. (.env 의 PROGRAM_START_DATE 로 덮어쓰기 가능)
+PROGRAM_START_DATE = _get_date("PROGRAM_START_DATE", date(2026, 7, 20))
 
 # 권장 최소 분량(자). 검증/거부는 하지 않고 안내 표시용으로만 사용.
 RECOMMENDED_MIN_CHARS = 300

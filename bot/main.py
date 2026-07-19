@@ -87,6 +87,7 @@ def build_application() -> Application:
     app.add_handler(CommandHandler("status", handlers.cmd_status))
     app.add_handler(CommandHandler("fine", handlers.cmd_fine))
     app.add_handler(CommandHandler("fine_preview", handlers.cmd_fine_preview))
+    app.add_handler(CommandHandler("reset", handlers.cmd_reset))
 
     # 버튼(콜백) 처리
     app.add_handler(CallbackQueryHandler(handlers.on_callback))
