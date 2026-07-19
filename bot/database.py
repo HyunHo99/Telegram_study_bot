@@ -128,6 +128,23 @@ def list_users(chat_id: int) -> list[sqlite3.Row]:
     return list(cur.fetchall())
 
 
+def migrate_chat(old_chat_id: int, new_chat_id: int) -> None:
+    """그룹이 슈퍼그룹으로 전환되어 chat_id 가 바뀐 경우 모든 데이터를 새 id 로 이전한다.
+
+    chat_id 가 기본키 일부인 테이블은 충돌 시 기존(옛 그룹) 데이터를 우선한다(REPLACE).
+    """
+    conn = _connect()
+    conn.execute("UPDATE OR REPLACE users SET chat_id = ? WHERE chat_id = ?",
+                 (new_chat_id, old_chat_id))
+    conn.execute("UPDATE submissions SET chat_id = ? WHERE chat_id = ?",
+                 (new_chat_id, old_chat_id))
+    conn.execute("UPDATE OR REPLACE settings SET chat_id = ? WHERE chat_id = ?",
+                 (new_chat_id, old_chat_id))
+    conn.execute("UPDATE OR REPLACE notion_week_pages SET chat_id = ? WHERE chat_id = ?",
+                 (new_chat_id, old_chat_id))
+    conn.commit()
+
+
 def all_chat_ids() -> list[int]:
     conn = _connect()
     cur = conn.execute("SELECT DISTINCT chat_id FROM users")

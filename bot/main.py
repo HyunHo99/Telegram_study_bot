@@ -68,6 +68,11 @@ def build_application() -> Application:
 
     app = Application.builder().token(config.TELEGRAM_BOT_TOKEN).post_init(_post_init).build()
 
+    # 그룹→슈퍼그룹 전환 시 데이터 자동 이전 (다른 핸들러보다 먼저)
+    app.add_handler(MessageHandler(
+        filters.StatusUpdate.MIGRATE, handlers.on_chat_migration
+    ))
+
     # 명령 핸들러 등록
     app.add_handler(CommandHandler("start", handlers.cmd_start))
     app.add_handler(CommandHandler("menu", handlers.cmd_menu))

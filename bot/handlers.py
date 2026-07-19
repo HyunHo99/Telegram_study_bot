@@ -362,6 +362,31 @@ async def on_reply_submission(update: Update, context: ContextTypes.DEFAULT_TYPE
     )
 
 
+# ===================== 그룹→슈퍼그룹 전환 처리 =====================
+
+async def on_chat_migration(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """그룹이 슈퍼그룹으로 전환되면 데이터를 새 chat_id 로 자동 이전한다."""
+    msg = update.effective_message
+    if msg is None:
+        return
+    if msg.migrate_to_chat_id is not None:
+        old_id, new_id = update.effective_chat.id, msg.migrate_to_chat_id
+    elif msg.migrate_from_chat_id is not None:
+        old_id, new_id = msg.migrate_from_chat_id, update.effective_chat.id
+    else:
+        return
+
+    database.migrate_chat(old_id, new_id)
+    logger.info("그룹 마이그레이션: chat_id %s → %s", old_id, new_id)
+    try:
+        await context.bot.send_message(
+            new_id,
+            "ℹ️ 그룹이 슈퍼그룹으로 전환되어 스터디 데이터를 새 그룹으로 자동 이전했습니다.",
+        )
+    except Exception:  # noqa: BLE001
+        pass
+
+
 # ===================== 버튼(콜백) 처리 =====================
 
 async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
