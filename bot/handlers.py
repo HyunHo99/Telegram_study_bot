@@ -4,49 +4,73 @@ from __future__ import annotations
 
 import logging
 
-from telegram import Update
+from telegram import ForceReply, Update
 from telegram.constants import ParseMode
 from telegram.ext import ContextTypes
 
-from . import config, database, fines, notion_sync, weeks
+from . import config, database, fines, keyboards, notion_sync, weeks
 from .telegram_utils import display_name, is_admin, parse_level, today
 
 logger = logging.getLogger(__name__)
 
 WEEKLY_TOPIC_KEY = "weekly_topic"
+# ForceReply 로 유도한 제출 대기 상태 저장 키 (application.bot_data)
+PENDING_SUB_KEY = "pending_submissions"
 
 
 # ===================== 도움말 =====================
 
+# 주의: 명령에 밑줄(_)이 포함되어 있어 Markdown 파싱이 깨지므로 일반 텍스트로 전송한다.
 HELP_TEXT = (
-    "📚 *스터디 봇 도움말*\n\n"
-    "*멤버 명령*\n"
-    "• `/register [레벨]` — 스터디 멤버로 등록 (레벨 미입력 시 1)\n"
-    "• `/daily <내용>` — 데일리 과제 제출 (내용 대신 메시지에 답장해도 됨)\n"
-    "• `/weekly <내용>` — 위클리 과제 제출\n"
-    "• `/status` — 이번 주 내 과제 진행 상황\n"
-    "• `/mylevel` — 내 레벨/규정 확인\n"
-    "• `/members` — 멤버 및 레벨 목록\n"
-    "• `/rules` — 레벨별 과제/벌금 규정\n"
-    "• `/topic` — 이번 주 위클리 과제 방향 확인\n\n"
-    "*관리자 명령*\n"
-    "• `/setlevel <레벨>` — (대상 메시지에 답장하여) 해당 멤버 레벨 설정\n"
-    "• `/setlevel <user_id> <레벨>` — user_id 로 레벨 설정\n"
-    "• `/topic <내용>` — 이번 주 위클리 과제 방향 공지/설정\n"
-    "• `/fine` — 지난 주 벌금 지금 집계·공지\n"
-    "• `/fine_preview` — 이번 주 현재까지 기준 벌금 미리보기\n"
+    "📚 스터디 봇 도움말\n\n"
+    "▪ 멤버 명령\n"
+    "• /register [레벨] — 스터디 멤버로 등록 (레벨 미입력 시 1)\n"
+    "• /daily <내용> — 데일리 과제 제출 (내용 대신 메시지에 답장해도 됨)\n"
+    "• /weekly <내용> — 위클리 과제 제출\n"
+    "• /status — 이번 주 내 과제 진행 상황\n"
+    "• /mylevel — 내 레벨/규정 확인\n"
+    "• /members — 멤버 및 레벨 목록\n"
+    "• /rules — 레벨별 과제/벌금 규정\n"
+    "• /topic — 이번 주 위클리 과제 방향 확인\n\n"
+    "▪ 관리자 명령\n"
+    "• /setlevel <레벨> — (대상 메시지에 답장하여) 해당 멤버 레벨 설정\n"
+    "• /setlevel <user_id> <레벨> — user_id 로 레벨 설정\n"
+    "• /topic <내용> — 이번 주 위클리 과제 방향 공지/설정\n"
+    "• /fine — 지난 주 벌금 지금 집계·공지\n"
+    "• /fine_preview — 이번 주 현재까지 기준 벌금 미리보기\n\n"
+    "💡 /menu 를 입력하면 버튼으로 편하게 쓸 수 있어요."
 )
+
+MENU_TEXT = "📚 *스터디 봇 메뉴*\n원하는 항목을 눌러 주세요."
 
 
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    await update.effective_message.reply_text(HELP_TEXT, parse_mode=ParseMode.MARKDOWN)
+    await cmd_menu(update, context)
+
+
+async def cmd_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await update.effective_message.reply_text(
+        MENU_TEXT, parse_mode=ParseMode.MARKDOWN, reply_markup=keyboards.main_menu()
+    )
 
 
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    await update.effective_message.reply_text(HELP_TEXT, parse_mode=ParseMode.MARKDOWN)
+    await update.effective_message.reply_text(HELP_TEXT)
 
 
 # ===================== 레벨 / 멤버 =====================
+
+def _register_user(chat_id: int, user, level: int | None) -> str:
+    """멤버를 등록/갱신하고 결과 메시지 텍스트를 반환한다."""
+    existing = database.get_user(chat_id, user.id)
+    database.upsert_user(chat_id, user.id, display_name(user), level)
+    saved = database.get_user(chat_id, user.id)
+    rule = config.get_rule(saved["level"])
+    verb = "등록" if existing is None else "정보 갱신"
+    return (
+        f"✅ {display_name(user)} 님 {verb} 완료 — {rule.label}\n{_rule_line(rule)}"
+    )
+
 
 async def cmd_register(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user = update.effective_user
@@ -60,14 +84,8 @@ async def cmd_register(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             )
             return
 
-    existing = database.get_user(chat.id, user.id)
-    database.upsert_user(chat.id, user.id, display_name(user), level)
-    saved = database.get_user(chat.id, user.id)
-    rule = config.get_rule(saved["level"])
-    verb = "등록" if existing is None else "정보 갱신"
     await update.effective_message.reply_text(
-        f"✅ {display_name(user)} 님 {verb} 완료 — {rule.label}\n{_rule_line(rule)}",
-        parse_mode=ParseMode.MARKDOWN,
+        _register_user(chat.id, user, level), parse_mode=ParseMode.MARKDOWN
     )
 
 
@@ -215,22 +233,30 @@ def _extract_content(update: Update, context: ContextTypes.DEFAULT_TYPE) -> str:
     return ""
 
 
-async def _handle_submission(update: Update, context: ContextTypes.DEFAULT_TYPE,
+async def _prompt_submission(target_msg, user, context: ContextTypes.DEFAULT_TYPE,
                              kind: str) -> None:
-    chat = update.effective_chat
-    user = update.effective_user
-    msg = update.effective_message
+    """제출 내용을 답장(ForceReply)으로 받도록 유도한다."""
     kind_label = "데일리" if kind == "daily" else "위클리"
+    mention = f"[{display_name(user)}](tg://user?id={user.id})"
+    prompt = await target_msg.reply_text(
+        f"📝 {mention} 님, 이 메시지에 *답장(Reply)* 으로 {kind_label} 과제 내용을 "
+        f"보내주세요.\n(권장 {config.RECOMMENDED_MIN_CHARS}자 이상)",
+        parse_mode=ParseMode.MARKDOWN,
+        reply_markup=ForceReply(
+            selective=True,
+            input_field_placeholder=f"{kind_label} 과제 내용을 입력하세요",
+        ),
+    )
+    pending = context.application.bot_data.setdefault(PENDING_SUB_KEY, {})
+    pending[(target_msg.chat_id, prompt.message_id)] = {
+        "user_id": user.id, "kind": kind,
+    }
 
-    content = _extract_content(update, context)
-    if not content:
-        await msg.reply_text(
-            f"제출할 내용을 입력해 주세요.\n"
-            f"예) `/{kind} 오늘 읽은 리포트 요약...`\n"
-            f"또는 리포트 메시지에 답장하며 `/{kind}` 입력",
-            parse_mode=ParseMode.MARKDOWN,
-        )
-        return
+
+async def _process_submission(chat, user, reply_msg, context: ContextTypes.DEFAULT_TYPE,
+                              kind: str, content: str) -> None:
+    """제출 내용을 저장·아카이빙하고 결과를 응답한다."""
+    kind_label = "데일리" if kind == "daily" else "위클리"
 
     # 미등록 사용자는 자동 등록(기본 레벨).
     if database.get_user(chat.id, user.id) is None:
@@ -266,7 +292,22 @@ async def _handle_submission(update: Update, context: ContextTypes.DEFAULT_TYPE,
     )
     if notion_url:
         reply += f"\n🗂 Notion 아카이빙: {notion_url}"
-    await msg.reply_text(reply, disable_web_page_preview=True)
+    await reply_msg.reply_text(reply, disable_web_page_preview=True)
+
+
+async def _handle_submission(update: Update, context: ContextTypes.DEFAULT_TYPE,
+                             kind: str) -> None:
+    content = _extract_content(update, context)
+    if not content:
+        # 내용 없이 명령만 온 경우: 답장으로 내용 받기.
+        await _prompt_submission(
+            update.effective_message, update.effective_user, context, kind
+        )
+        return
+    await _process_submission(
+        update.effective_chat, update.effective_user,
+        update.effective_message, context, kind, content,
+    )
 
 
 async def cmd_daily(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -275,6 +316,90 @@ async def cmd_daily(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 async def cmd_weekly(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await _handle_submission(update, context, "weekly")
+
+
+# ===================== 답장 기반 제출 수신 =====================
+
+async def on_reply_submission(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """봇의 제출 유도(ForceReply) 메시지에 대한 답장을 처리한다."""
+    msg = update.effective_message
+    reply = msg.reply_to_message
+    if reply is None:
+        return
+    pending = context.application.bot_data.get(PENDING_SUB_KEY, {})
+    key = (msg.chat_id, reply.message_id)
+    info = pending.get(key)
+    if info is None:
+        return  # 우리가 유도한 답장이 아님 → 무시
+    if info["user_id"] != update.effective_user.id:
+        return  # 다른 사람이 답장한 경우 무시
+    pending.pop(key, None)
+
+    content = (msg.text or msg.caption or "").strip()
+    if not content:
+        await msg.reply_text("내용이 비어 있어요. 다시 제출해 주세요.")
+        return
+    await _process_submission(
+        update.effective_chat, update.effective_user, msg, context,
+        info["kind"], content,
+    )
+
+
+# ===================== 버튼(콜백) 처리 =====================
+
+async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """인라인 버튼 클릭 처리."""
+    query = update.callback_query
+    await query.answer()
+    data = query.data or ""
+
+    if data == "m:menu":
+        await query.edit_message_text(
+            MENU_TEXT, parse_mode=ParseMode.MARKDOWN,
+            reply_markup=keyboards.main_menu(),
+        )
+        return
+
+    if data == "m:help":
+        await query.message.reply_text(HELP_TEXT)
+        return
+
+    if data == "m:status":
+        await cmd_status(update, context)
+        return
+    if data == "m:rules":
+        await cmd_rules(update, context)
+        return
+    if data == "m:mylevel":
+        await cmd_mylevel(update, context)
+        return
+    if data == "m:members":
+        await cmd_members(update, context)
+        return
+    if data == "m:topic":
+        await cmd_topic(update, context)
+        return
+
+    if data == "m:register":
+        await query.message.reply_text(
+            "등록할 레벨을 선택하세요:", reply_markup=keyboards.level_menu()
+        )
+        return
+    if data.startswith("reg:"):
+        try:
+            level = int(data.split(":", 1)[1])
+        except ValueError:
+            level = None
+        text = _register_user(query.message.chat_id, update.effective_user, level)
+        await query.edit_message_text(text, parse_mode=ParseMode.MARKDOWN)
+        return
+
+    if data == "m:daily":
+        await _prompt_submission(query.message, update.effective_user, context, "daily")
+        return
+    if data == "m:weekly":
+        await _prompt_submission(query.message, update.effective_user, context, "weekly")
+        return
 
 
 # ===================== 진행 상황 / 벌금 =====================
