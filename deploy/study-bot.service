@@ -1,0 +1,20 @@
+[Unit]
+Description=Telegram Study Bot
+# 네트워크가 준비된 뒤 시작
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Ubuntu 이미지는 기본 사용자가 'ubuntu', Oracle Linux 이미지는 'opc' 입니다.
+# 사용하는 이미지에 맞게 User / 경로를 수정하세요.
+User=ubuntu
+WorkingDirectory=/home/ubuntu/Telegram_study_bot
+ExecStart=/home/ubuntu/Telegram_study_bot/.venv/bin/python run.py
+# 크래시/재부팅 시 자동 재시작
+Restart=always
+RestartSec=5
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target

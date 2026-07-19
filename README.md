@@ -31,6 +31,10 @@
 
 ## 🚀 설치 및 실행
 
+> ☁️ **서버가 없어도 됩니다.** 텔레그램은 봇 코드를 호스팅해주지 않으므로 봇을
+> 24시간 켜둘 곳이 필요한데, 무료 VM에 올리는 방법을 [`deploy/README.md`](deploy/README.md)
+> (Oracle Cloud 무료 VM)에 단계별로 정리해 두었습니다.
+
 ```bash
 # 1. 의존성 설치
 pip install -r requirements.txt
