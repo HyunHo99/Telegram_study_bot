@@ -266,14 +266,16 @@ async def _process_submission(chat, user, reply_msg, context: ContextTypes.DEFAU
     year, week = weeks.iso_of(d)
     sub_id = database.add_submission(chat.id, user.id, kind, content, year, week)
 
+    level = database.get_user(chat.id, user.id)["level"]
+
     # Notion 아카이빙 (실패해도 제출은 유효).
     notion_url = await notion_sync.archive_submission(
-        chat.id, kind, display_name(user), content, d
+        chat.id, kind, display_name(user), content, d, level=level
     )
     if notion_url:
         database.set_submission_notion_url(sub_id, notion_url)
 
-    rule = config.get_rule(database.get_user(chat.id, user.id)["level"])
+    rule = config.get_rule(level)
     char_count = len(content)
     short_note = ""
     if char_count < config.RECOMMENDED_MIN_CHARS:
