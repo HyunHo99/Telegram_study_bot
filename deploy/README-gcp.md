@@ -143,6 +143,9 @@ journalctl -u study-bot -f               # 실시간 로그 (Ctrl+C 로 나가�
 > ✅ Google Cloud 는 Oracle 과 달리 idle 인스턴스를 회수하지 않으므로,
 > 별도의 keepalive 설정은 필요 없습니다.
 
+> 💾 **DB 백업**: DB 를 GitHub(private) 에 매일 백업하려면
+> [`deploy/README-db-backup.md`](README-db-backup.md) 참고. VM 이 삭제돼도 복원 가능합니다.
+
 ---
 
 ## 코드 업데이트 방법
